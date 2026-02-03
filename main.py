@@ -1,17 +1,15 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, RedirectResponse
 import folium
-from folium.plugins import LocateControl
+from folium.plugins import LocateControl, Search
 import json
 import os
 from datetime import datetime
 
-# 1. INICIALIZAÇÃO
+# 1. CONFIGURAÇÃO INICIAL
 app = FastAPI()
-# Mudamos o nome para v2 para o sistema carregar a lista nova de 15 bancos
 FILE_NAME = "dados_v2.json"
 
-# 2. GESTÃO DE DADOS
 def carregar_dados():
     if not os.path.exists(FILE_NAME):
         dados_iniciais = [
@@ -40,21 +38,26 @@ def salvar_dados(dados):
     with open(FILE_NAME, "w") as f:
         json.dump(dados, f, indent=4)
 
-# 3. INTERFACE
+# 2. ROTA PRINCIPAL
 @app.get("/", response_class=HTMLResponse)
 def mostrar_mapa():
     atms = carregar_dados()
+    
+    # Criar o mapa
     mapa = folium.Map(location=[-8.8383, 13.2344], zoom_start=12)
     LocateControl().add_to(mapa)
 
     cores_bancos = {"BAI": "blue", "BFA": "orange", "BIC": "red", "Standard Bank": "darkblue", "ATLANTICO": "darkred"}
 
+    # FeatureGroup é necessário para a pesquisa funcionar
+    grupo_atms = folium.FeatureGroup(name="ATMs Luanda")
+
     for atm in atms:
         cor_banco = cores_bancos.get(atm["banco"], "gray")
         cor_status = "green" if atm["dinheiro"] else "red"
-        icone_status = "check" if atm["dinheiro"] else "times"
+        nome_busca = f"{atm['banco']} - {atm['local']}"
         
-        botao_html = f"""
+        popup_html = f"""
             <div style='font-family: sans-serif; width: 180px;'>
                 <h4 style='margin:0; color:{cor_banco};'>{atm['banco']}</h4>
                 <p style='font-size:12px; color:gray;'>{atm['local']}</p>
@@ -67,8 +70,97 @@ def mostrar_mapa():
                 </a>
             </div>
         """
-        folium.Marker(location=[atm["lat"], atm["lng"]], 
-                      popup=folium.Popup(botao_html, max_width=250),
-                      icon=folium.Icon(color=cor_banco, icon=icone_status, prefix="fa")).add_to(mapa)
+        
+        folium.Marker(
+            location=[atm["lat"], atm["lng"]],
+            popup=folium.Popup(popup_html, max_width=250),
+            tooltip=nome_busca,
+            icon=folium.Icon(color=cor_banco, icon="info-sign"),
+            name=nome_busca # Campo usado pela pesquisa
+        ).add_to(grupo_atms)
 
-    mapa
+    grupo_atms.add_to(mapa)
+
+    # Adicionar Barra de Pesquisa
+    Search(
+        layer=grupo_atms,
+        geom_type="Point",
+        placeholder="Pesquisar Banco ou Local...",
+        collapsed=False,
+        search_label="name"
+    ).add_to(mapa)
+
+    mapa_html = mapa._repr_html_()
+    
+    # Layout Final com CSS para Header e Loader
+    full_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body {{ margin: 0; padding: 0; overflow: hidden; }}
+            #loader {{
+                position: fixed; width: 100%; height: 100%; top: 0; left: 0;
+                background: white; z-index: 10000; display: flex;
+                flex-direction: column; align-items: center; justify-content: center;
+                transition: opacity 0.5s ease;
+            }}
+            .spinner {{
+                border: 8px solid #f3f3f3; border-top: 8px solid #27ae60;
+                border-radius: 50%; width: 50px; height: 50px;
+                animation: spin 1s linear infinite;
+            }}
+            @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+            
+            .header {{
+                position: fixed; top: 0; left: 0; width: 100%; z-index: 1000;
+                background: #2c3e50; color: white; padding: 15px 0;
+                text-align: center; font-family: sans-serif; font-weight: bold;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            }}
+            #map-container {{ margin-top: 52px; height: calc(100vh - 52px); }}
+            /* Ajuste da posição da barra de pesquisa do Folium */
+            .leaflet-control-search {{ margin-top: 65px !important; }}
+        </style>
+    </head>
+    <body>
+        <div id="loader">
+            <div class="spinner"></div>
+            <p style="font-family:sans-serif; margin-top:15px; color:#2c3e50;">A carregar DINHEIRO AKI...</p>
+        </div>
+
+        <div class="header">
+            🏧 DINHEIRO <span style="color:#27ae60;">AKI</span>
+        </div>
+
+        <div id="map-container">
+            {mapa_html}
+        </div>
+
+        <script>
+            window.onload = function() {{
+                setTimeout(function() {{
+                    var loader = document.getElementById('loader');
+                    loader.style.opacity = '0';
+                    setTimeout(function() {{ loader.style.display = 'none'; }}, 500);
+                }}, 1000);
+            }};
+        </script>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=full_html)
+
+# 3. LÓGICA DE ATUALIZAÇÃO
+@app.get("/trocar")
+def trocar_status(id: int, status: str):
+    atms = carregar_dados()
+    for atm in atms:
+        if atm["id"] == id:
+            atm["dinheiro"] = (status.lower() == "true")
+            atm["hora"] = datetime.now().strftime("%H:%M")
+            break
+    salvar_dados(atms)
+    return RedirectResponse(url="/")
