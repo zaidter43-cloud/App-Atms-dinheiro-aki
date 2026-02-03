@@ -34,47 +34,49 @@ def salvar_dados(dados):
 @app.get("/", response_class=HTMLResponse)
 def mostrar_mapa():
     atms = carregar_dados()
-    # Centrado em Luanda
-    mapa = folium.Map(location=[-8.8383, 13.2344], zoom_start=12)
+    
+    # 1. Cria o mapa
+    mapa = folium.Map(location=[-8.8383, 13.2344], zoom_start=12, control_scale=True)
     LocateControl().add_to(mapa)
 
-    # Cores Oficiais
-    cores_bancos = {
-        "BAI": "blue",
-        "BFA": "orange",
-        "BIC": "red",
-        "Standard Bank": "darkblue",
-        "ATLANTICO": "darkred"
-    }
+    # Cores dos bancos (igual ao anterior)
+    cores_bancos = {"BAI": "blue", "BFA": "orange", "BIC": "red", "Standard Bank": "darkblue", "ATLANTICO": "darkred"}
 
     for atm in atms:
         cor_banco = cores_bancos.get(atm["banco"], "gray")
         cor_status = "green" if atm["dinheiro"] else "red"
         icone_status = "check" if atm["dinheiro"] else "times"
-        texto_status = "COM DINHEIRO" if atm["dinheiro"] else "SEM DINHEIRO"
-        novo_status = "false" if atm["dinheiro"] else "true"
         
         botao_html = f"""
             <div style='font-family: sans-serif; width: 180px;'>
                 <h4 style='margin:0; color:{cor_banco};'>{atm['banco']}</h4>
                 <p style='font-size:12px; color:gray;'>{atm['local']}</p>
-                <p>Status: <b style='color:{cor_status};'>{texto_status}</b></p>
-                <p style='font-size:10px;'>Atualizado: {atm['hora']}</p>
-                <hr style='border: 0.5px solid #eee;'>
-                <a href='/trocar?id={atm['id']}&status={novo_status}' 
-                   style='display:block; padding:10px; background:{cor_status}; color:white; text-decoration:none; border-radius:5px; text-align:center; font-weight:bold;'>
-                   ATUALIZAR STATUS
+                <p>Status: <b style='color:{cor_status};'>{'COM DINHEIRO' if atm['dinheiro'] else 'SEM DINHEIRO'}</b></p>
+                <hr>
+                <a href='/trocar?id={atm['id']}&status={'false' if atm['dinheiro'] else 'true'}' 
+                   style='display:block; padding:8px; background:{cor_status}; color:white; text-decoration:none; border-radius:5px; text-align:center; font-weight:bold;'>
+                   ATUALIZAR
                 </a>
             </div>
         """
-        
-        folium.Marker(
-            location=[atm["lat"], atm["lng"]],
-            popup=folium.Popup(botao_html, max_width=250),
-            icon=folium.Icon(color=cor_banco, icon=icone_status, prefix="fa")
-        ).add_to(mapa)
+        folium.Marker(location=[atm["lat"], atm["lng"]], 
+                      popup=folium.Popup(botao_html, max_width=250),
+                      icon=folium.Icon(color=cor_banco, icon=icone_status, prefix="fa")).add_to(mapa)
 
-    return mapa._repr_html_()
+    # 2. ADICIONAR O CABEÇALHO (O TOQUE FINAL)
+    mapa_html = mapa._repr_html_()
+    
+    header_html = """
+    <div style="position: fixed; top: 10px; left: 50px; width: 80%; z-index: 9999; background: white; 
+                padding: 10px 20px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+                text-align: center; font-family: 'Arial Black', sans-serif;">
+        <span style="color: #2c3e50; font-size: 20px;">🏧 DINHEIRO</span>
+        <span style="color: #27ae60; font-size: 20px;"> AKI</span>
+        <p style="margin: 0; font-size: 10px; color: gray; font-family: Arial;">Estado dos ATMs em Luanda em tempo real</p>
+    </div>
+    """
+    
+    return f"{header_html}{mapa_html}"
 
 # 4. LÓGICA DE ATUALIZAÇÃO E CONFIRMAÇÃO
 @app.get("/trocar")
