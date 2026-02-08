@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 
 app = FastAPI()
-FILE_NAME = "dados_v10.json"
+FILE_NAME = "dados_v11.json"
 
 def carregar_dados():
     if not os.path.exists(FILE_NAME):
@@ -18,6 +18,8 @@ def carregar_dados():
             {"id": 3, "banco": "ATL", "muni": "Viana", "zona": "Viana Park", "lat": -8.9150, "lng": 13.3600, "dinheiro": True},
             {"id": 4, "banco": "STB", "muni": "Kilamba", "zona": "Bloco B", "lat": -8.9955, "lng": 13.2755, "dinheiro": True},
             {"id": 5, "banco": "SOL", "muni": "Luanda", "zona": "Ilha", "lat": -8.7940, "lng": 13.2200, "dinheiro": True},
+            {"id": 6, "banco": "KEV", "muni": "Cazenga", "zona": "Cuca", "lat": -8.8355, "lng": 13.2865, "dinheiro": True},
+            {"id": 7, "banco": "BIR", "muni": "Luanda", "zona": "Kinaxixi", "lat": -8.8155, "lng": 13.2345, "dinheiro": False}
         ]
         for d in dados: d["hora"] = datetime.now().strftime("%H:%M")
         salvar_dados(dados)
@@ -33,14 +35,25 @@ def salvar_dados(dados):
 def mostrar_mapa():
     atms = carregar_dados()
     
-    # Criar mapa ocupando 100% sem bordas
+    # Criar o mapa com definições de preenchimento total
     mapa = folium.Map(
         location=[-8.8383, 13.2344], 
         zoom_start=13, 
         tiles="cartodbpositron", 
-        zoom_control=False
+        zoom_control=False,
+        width='100%',
+        height='100%'
     )
     
+    # Injetar CSS para forçar o Leaflet a ocupar tudo e remover bordas brancas
+    mapa.get_root().header.add_child(folium.Element("""
+        <style>
+            #map { position:absolute; top:0; bottom:0; right:0; left:0; }
+            .leaflet-control-search { margin-top: 80px !important; width: 300px !important; }
+            .leaflet-control-locate { margin-top: 80px !important; }
+        </style>
+    """))
+
     LocateControl(auto_start=True, flyTo=True, locateOptions={"enableHighAccuracy": True}).add_to(mapa)
 
     cluster = MarkerCluster(name="ATMs Luanda").add_to(mapa)
@@ -52,10 +65,10 @@ def mostrar_mapa():
         popup_html = f"""
         <div style="font-family: sans-serif; width: 160px; text-align: center;">
             <b style="font-size:14px;">{atm['banco']}</b><br><small>{atm['zona']}</small><hr>
-            Status: <b style="color:{cor};">{'COM NOTAS' if atm['dinheiro'] else 'VAZIO'}</b><br>
+            <b style="color:{cor};">{'COM DINHEIRO' if atm['dinheiro'] else 'VAZIO'}</b><br>
             <a href="/trocar?id={atm['id']}&status={'false' if atm['dinheiro'] else 'true'}" 
-               style="display:inline-block; margin-top:8px; padding:8px 12px; background:{cor}; color:white; text-decoration:none; border-radius:20px; font-size:10px; font-weight:bold;">
-               ATUALIZAR AGORA
+               style="display:inline-block; margin-top:8px; padding:10px 15px; background:{cor}; color:white; text-decoration:none; border-radius:20px; font-weight:bold; font-size:10px;">
+               MUDAR STATUS
             </a>
         </div>
         """
@@ -66,7 +79,7 @@ def mostrar_mapa():
             name=f"{atm['banco']} {atm['zona']} {atm['muni']}"
         ).add_to(cluster)
 
-    Search(layer=cluster, geom_type="Point", placeholder="Onde queres levantar?", collapsed=False, search_label="name").add_to(mapa)
+    Search(layer=cluster, geom_type="Point", placeholder="Procurar banco ou bairro...", collapsed=False, search_label="name").add_to(mapa)
 
     mapa_html = mapa._repr_html_()
     
@@ -77,22 +90,21 @@ def mostrar_mapa():
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
         <style>
-            body, html {{ margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }}
-            #map-wrapper {{ height: 100vh; width: 100vw; position: absolute; top: 0; left: 0; }}
-            .custom-header {{
+            body, html {{ margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; position: fixed; }}
+            #map-container {{ height: 100vh; width: 100vw; }}
+            .header-aki {{
                 position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
-                width: 85%; max-width: 380px; background: rgba(255,255,255,0.9);
-                backdrop-filter: blur(10px); z-index: 1000; padding: 12px;
-                border-radius: 30px; text-align: center; font-family: sans-serif;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.1); border: 1px solid rgba(0,0,0,0.05);
-                pointer-events: none; font-weight: 900; letter-spacing: 1px;
+                width: 80%; max-width: 350px; background: white; z-index: 9999;
+                padding: 12px; border-radius: 50px; text-align: center;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif;
+                font-weight: 800; border-bottom: 3px solid #27ae60;
+                pointer-events: none;
             }}
-            .leaflet-top {{ top: 80px !important; }}
         </style>
     </head>
     <body>
-        <div class="custom-header">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></div>
-        <div id="map-wrapper">{mapa_html}</div>
+        <div class="header-aki">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></div>
+        <div id="map-container">{mapa_html}</div>
     </body>
     </html>
     """)
