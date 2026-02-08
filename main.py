@@ -119,4 +119,16 @@ def mostrar_mapa():
             name=f"{atm['banco']} {atm['zona']} {atm['muni']}"
         ).add_to(cluster)
 
-    Search(layer=cluster, geom_type="Point", placeholder="Procurar banco ou bairro...", collapsed=False
+    Search(layer=cluster, geom_type="Point", placeholder="Procurar banco ou bairro...", collapsed=False, search_label="name", zoom=16).add_to(mapa)
+
+    return HTMLResponse(content=mapa._repr_html_())
+
+@app.get("/trocar")
+def trocar_status(id: int, status: str):
+    atms = carregar_dados()
+    for atm in atms:
+        if atm["id"] == id:
+            atm["dinheiro"] = (status.lower() == "true")
+            break
+    salvar_dados(atms)
+    return RedirectResponse(url="/")
