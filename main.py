@@ -7,18 +7,21 @@ import os
 from datetime import datetime
 
 app = FastAPI()
-FILE_NAME = "dados_v16.json"
+FILE_NAME = "dados_v18.json"
 ADMIN_PIN = "2424"
 
 def carregar_dados():
     if not os.path.exists(FILE_NAME):
+        # Coordenadas reais e precisas de Luanda
         dados = [
-            {"id": 0, "banco": "BAI", "muni": "Luanda", "zona": "Marginal", "lat": -8.8105, "lng": 13.2355, "dinheiro": True},
+            {"id": 0, "banco": "BAI", "muni": "Luanda", "zona": "Marginal (Sede)", "lat": -8.8120, "lng": 13.2300, "dinheiro": True},
             {"id": 1, "banco": "BFA", "muni": "Luanda", "zona": "Maianga", "lat": -8.8315, "lng": 13.2325, "dinheiro": True},
             {"id": 2, "banco": "BIC", "muni": "Talatona", "zona": "Belas Shopping", "lat": -8.9280, "lng": 13.1780, "dinheiro": True},
-            {"id": 3, "banco": "ATL", "muni": "Viana", "zona": "Viana Park", "lat": -8.9150, "lng": 13.3600, "dinheiro": True},
-            {"id": 4, "banco": "STB", "muni": "Kilamba", "zona": "Bloco B", "lat": -8.9955, "lng": 13.2755, "dinheiro": True},
-            {"id": 5, "banco": "SOL", "muni": "Cazenga", "zona": "Cuca", "lat": -8.8355, "lng": 13.2865, "dinheiro": False},
+            {"id": 3, "banco": "ATL", "muni": "Viana", "zona": "Viana Park", "lat": -8.9050, "lng": 13.3550, "dinheiro": True},
+            {"id": 4, "banco": "STB", "muni": "Kilamba", "zona": "Bloco B", "lat": -8.9950, "lng": 13.2750, "dinheiro": True},
+            {"id": 5, "banco": "SOL", "muni": "Cazenga", "zona": "Marco Histórico", "lat": -8.8450, "lng": 13.2950, "dinheiro": False},
+            {"id": 6, "banco": "BE", "muni": "Luanda", "zona": "Kinaxixi", "lat": -8.8190, "lng": 13.2450, "dinheiro": True},
+            {"id": 7, "banco": "BCI", "muni": "Mutamba", "zona": "Largo Mutamba", "lat": -8.8155, "lng": 13.2315, "dinheiro": True}
         ]
         for d in dados: d["hora"] = datetime.now().strftime("%H:%M")
         salvar_dados(dados)
@@ -33,92 +36,87 @@ def salvar_dados(dados):
 @app.get("/", response_class=HTMLResponse)
 def mostrar_mapa():
     atms = carregar_dados()
-    mapa = folium.Map(location=[-8.8383, 13.2344], zoom_start=12, tiles="cartodbpositron", zoom_control=False)
+    # Centralizado em Luanda com zoom ideal
+    mapa = folium.Map(location=[-8.8383, 13.2344], zoom_start=13, tiles="cartodbpositron", zoom_control=False)
     
-    # UI e Lógica de Navegação
-    menu_ui = f"""
-    <div style="position: fixed; top: 15px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 400px; background: white; z-index: 9999; padding: 12px; border-radius: 30px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif; border-bottom: 3px solid #27ae60;">
+    header_extra = f"""
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+    <style>
+        .leaflet-routing-container {{ display: none !important; }}
+        .leaflet-top {{ top: 85px !important; }}
+        #app-header {{
+            position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
+            width: 90%; max-width: 400px; background: white; z-index: 9999;
+            padding: 12px; border-radius: 30px; display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif; border-bottom: 3px solid #27ae60;
+        }}
+    </style>
+    <div id="app-header">
         <div style="width: 30px;"></div>
-        <div style="font-weight: bold; letter-spacing: 1px;">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></div>
-        <div onclick="document.getElementById('side-menu').style.display='block'" style="cursor: pointer; font-size: 20px; font-weight: bold; padding-right: 10px;">⋮</div>
+        <div style="font-weight: bold; font-family: sans-serif;">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></div>
+        <div onclick="location.reload()" style="cursor: pointer; font-size: 18px; padding-right:10px;">🔄</div>
     </div>
-    
-    <div id="side-menu" style="display: none; position: fixed; top: 75px; right: 20px; width: 180px; background: white; z-index: 10000; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-family: sans-serif; padding: 15px;">
-        <div style="text-align: right; cursor: pointer; color: red;" onclick="this.parentElement.style.display='none'">✖</div>
-        <b style="font-size: 11px; color: gray;">OPÇÕES</b><hr>
-        <div style="padding: 10px 0; cursor: pointer;" onclick="location.reload()">🔄 Atualizar Mapa</div>
-        <div style="padding: 10px 0; cursor: pointer; color: #2980b9;" onclick="alert('Funcionalidade PWA em breve!')">📱 Instalar App</div>
-    </div>
-
     <script>
+        var userLat, userLng, routingControl;
+
+        navigator.geolocation.getCurrentPosition(function(pos) {{
+            userLat = pos.coords.latitude;
+            userLng = pos.coords.longitude;
+        }}, function(err) {{ console.log("Erro GPS: " + err.message); }});
+
+        function tracarRota(destLat, destLng) {{
+            var mapElement = document.getElementsByClassName('folium-map')[0].id;
+            var mapInstance = window[mapElement];
+            if (routingControl) {{ mapInstance.removeControl(routingControl); }}
+            if (!userLat) {{
+                alert("Ativa o GPS no navegador para veres a rota!");
+                return;
+            }
+            routingControl = L.Routing.control({{
+                waypoints: [L.latLng(userLat, userLng), L.latLng(destLat, destLng)],
+                routeWhileDragging: false,
+                lineOptions: {{ styles: [{{color: '#3498db', weight: 6, opacity: 0.8}}] }},
+                createMarker: function() {{ return null; }}
+            }}).addTo(mapInstance);
+            mapInstance.closePopup();
+        }}
+
         function authUpdate(id, status) {{
-            var p = prompt("Código 2424:");
+            var p = prompt("PIN Administrativo:");
             if(p == "{ADMIN_PIN}") {{ window.location.href = "/trocar?id="+id+"&status="+status; }}
         }}
-        // Função para abrir GPS externo
-        function abrirGPS(lat, lng) {{
-            window.open("https://www.google.com/maps/dir/?api=1&destination=" + lat + "," + lng);
-        }}
     </script>
-    <style>
-        .leaflet-top {{ top: 80px !important; }}
-        .leaflet-popup-content-wrapper {{ border-radius: 15px !important; padding: 5px; }}
-    </style>
     """
-    mapa.get_root().html.add_child(folium.Element(menu_ui))
+    mapa.get_root().header.add_child(folium.Element(header_extra))
 
     LocateControl(auto_start=False, flyTo=True).add_to(mapa)
     cluster = MarkerCluster(name="Bancos").add_to(mapa)
 
     for atm in atms:
         cor = "green" if atm["dinheiro"] else "red"
-        icon_html = f'<div style="background-color: {cor}; border: 2.5px solid white; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 10px; box-shadow: 0 3px 8px rgba(0,0,0,0.2);">{atm["banco"]}</div>'
+        icon_html = f'''<div style="background-color: {cor}; border: 2.5px solid white; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 10px; box-shadow: 0 3px 8px rgba(0,0,0,0.2);">{atm["banco"]}</div>'''
         
-        # Conteúdo do Popup com Botão de Navegação
-        popup_content = f"""
+        popup_html = f"""
         <div style="text-align:center; font-family: sans-serif; min-width: 180px;">
             <b style="font-size:16px;">{atm["banco"]}</b><br>
-            <span style="color:gray; font-size:12px;">{atm["zona"]}</span><hr>
-            <div style="margin-bottom: 10px;">Status: <b style="color:{cor};">{'COM NOTAS' if atm['dinheiro'] else 'VAZIO'}</b></div>
-            
-            <button onclick="abrirGPS({atm['lat']}, {atm['lng']})" 
-                style="background:#3498db; color:white; border:none; border-radius:20px; padding:10px 15px; width:100%; font-weight:bold; cursor:pointer; margin-bottom:5px; display:flex; align-items:center; justify-content:center; gap:5px;">
-                📍 COMO CHEGAR
+            <span style="color:gray;">{atm["zona"]}</span><hr>
+            <button onclick="tracarRota({atm['lat']}, {atm['lng']})" 
+                style="background:#2ecc71; color:white; border:none; border-radius:20px; padding:12px; width:100%; font-weight:bold; cursor:pointer; margin-bottom:8px;">
+                🚀 TRAÇAR ROTA
             </button>
-            
             <button onclick="authUpdate({atm['id']}, '{"false" if atm['dinheiro'] else "true"}')" 
-                style="background:#ecf0f1; color:#2c3e50; border:none; border-radius:20px; padding:8px; width:100%; font-size:11px; cursor:pointer;">
-                Atualizar Status
+                style="background:#f8f9fa; color:#7f8c8d; border:none; border-radius:20px; padding:6px; width:100%; font-size:10px; cursor:pointer;">
+                Reportar Estado
             </button>
         </div>
         """
         
         folium.Marker(
             location=[atm["lat"], atm["lng"]],
-            popup=folium.Popup(popup_content, max_width=250),
+            popup=folium.Popup(popup_html, max_width=250),
             icon=folium.DivIcon(html=icon_html),
             name=f"{atm['banco']} {atm['zona']} {atm['muni']}"
         ).add_to(cluster)
 
-    # A pesquisa agora faz o zoom automático no banco selecionado
-    Search(
-        layer=cluster, 
-        geom_type="Point", 
-        placeholder="Procurar zona ou banco...", 
-        collapsed=False, 
-        search_label="name",
-        zoom=17 # Nível de zoom estilo Street View
-    ).add_to(mapa)
-
-    return HTMLResponse(content=mapa._repr_html_())
-
-@app.get("/trocar")
-def trocar_status(id: int, status: str):
-    atms = carregar_dados()
-    for atm in atms:
-        if atm["id"] == id:
-            atm["dinheiro"] = (status.lower() == "true")
-            atm["hora"] = datetime.now().strftime("%H:%M")
-            break
-    salvar_dados(atms)
-    return RedirectResponse(url="/")
+    Search(layer=cluster, geom_type="Point", placeholder="Procurar banco ou bairro...", collapsed=False
