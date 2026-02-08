@@ -7,22 +7,21 @@ import os
 from datetime import datetime
 
 app = FastAPI()
-FILE_NAME = "dados_v12_final.json"
+FILE_NAME = "dados_oficiais.json"
 ADMIN_PIN = "2424"
 
 def carregar_dados():
     if not os.path.exists(FILE_NAME):
+        # Lista base robusta
         dados = [
             {"id": 0, "banco": "BAI", "muni": "Luanda", "zona": "Marginal", "lat": -8.8105, "lng": 13.2355, "dinheiro": True},
             {"id": 1, "banco": "BFA", "muni": "Luanda", "zona": "Maianga", "lat": -8.8315, "lng": 13.2325, "dinheiro": True},
             {"id": 2, "banco": "BIC", "muni": "Talatona", "zona": "Shopping", "lat": -8.9185, "lng": 13.1815, "dinheiro": False},
             {"id": 3, "banco": "ATL", "muni": "Viana", "zona": "Viana Park", "lat": -8.9150, "lng": 13.3600, "dinheiro": True},
             {"id": 4, "banco": "STB", "muni": "Kilamba", "zona": "Bloco B", "lat": -8.9955, "lng": 13.2755, "dinheiro": True},
-            {"id": 5, "banco": "BAI", "muni": "Viana", "zona": "Zango 3", "lat": -9.0020, "lng": 13.4550, "dinheiro": True},
-            {"id": 6, "banco": "SOL", "muni": "Luanda", "zona": "Ilha", "lat": -8.7940, "lng": 13.2200, "dinheiro": True},
-            {"id": 7, "banco": "BCI", "muni": "Sambizanga", "zona": "Mercado", "lat": -8.8050, "lng": 13.2550, "dinheiro": False}
+            {"id": 5, "banco": "SOL", "muni": "Luanda", "zona": "Ilha", "lat": -8.7940, "lng": 13.2200, "dinheiro": True},
+            {"id": 6, "banco": "KEV", "muni": "Cazenga", "zona": "Cuca", "lat": -8.8355, "lng": 13.2865, "dinheiro": True}
         ]
-        for d in dados: d["hora"] = datetime.now().strftime("%H:%M")
         salvar_dados(dados)
         return dados
     with open(FILE_NAME, "r") as f:
@@ -36,7 +35,7 @@ def salvar_dados(dados):
 def mostrar_mapa():
     atms = carregar_dados()
     
-    # Criar mapa base
+    # Criar o mapa (Folium já cria um ecrã inteiro por defeito se não lhe dermos limites)
     mapa = folium.Map(
         location=[-8.8383, 13.2344], 
         zoom_start=13, 
@@ -44,83 +43,64 @@ def mostrar_mapa():
         zoom_control=False
     )
     
-    # Injeção de CSS de ecrã total absoluto
-    mapa.get_root().header.add_child(folium.Element("""
+    # Injetar o CABEÇALHO e o SCRIPT DE SEGURANÇA diretamente no mapa
+    # Isso garante que apareçam POR CIMA do mapa sem estragar os bancos
+    script_seguranca = f"""
+        <div style="position: fixed; top: 15px; left: 50%; transform: translateX(-50%); 
+                    width: 85%; max-width: 350px; background: white; z-index: 9999; 
+                    padding: 12px; border-radius: 30px; text-align: center; 
+                    box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif; 
+                    font-weight: bold; border-bottom: 3px solid #27ae60; pointer-events: none;">
+            🏧 DINHEIRO <span style="color:#27ae60;">AKI</span>
+        </div>
+        <script>
+            function authUpdate(id, status) {{
+                var p = prompt("Código de Segurança (2424):");
+                if(p == "{ADMIN_PIN}") {{ 
+                    window.location.href = "/trocar?id=" + id + "&status=" + status; 
+                }} else if (p != null) {{
+                    alert("Código incorreto.");
+                }}
+            }}
+        </script>
         <style>
-            #map { position:absolute !important; top:0; bottom:0; right:0; left:0; }
-            .leaflet-control-search { margin-top: 85px !important; border: 2px solid #27ae60 !important; }
-            .leaflet-control-locate { margin-top: 85px !important; }
-            .leaflet-control-layers { margin-top: 85px !important; }
+            .leaflet-top {{ top: 80px !important; }}
         </style>
-    """))
+    """
+    mapa.get_root().html.add_child(folium.Element(script_seguranca))
 
+    # GPS
     LocateControl(auto_start=True, flyTo=True, locateOptions={"enableHighAccuracy": True}).add_to(mapa)
 
-    cluster = MarkerCluster(name="📍 Todos os Bancos").add_to(mapa)
-    grupo_disponivel = folium.FeatureGroup(name="✅ Apenas com Dinheiro").add_to(mapa)
+    # Cluster de Bancos
+    cluster = MarkerCluster(name="Bancos").add_to(mapa)
 
     for atm in atms:
         cor = "green" if atm["dinheiro"] else "red"
-        icon_html = f"""<div style="background-color: {cor}; border: 2px solid white; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">{atm['banco']}</div>"""
+        icon_html = f'''<div style="background-color: {cor}; border: 2.5px solid white; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">{atm['banco']}</div>'''
         
-        popup_html = f"""
-        <div style="font-family: sans-serif; width: 180px; text-align: center;">
+        popup_html = f'''
+        <div style="font-family: sans-serif; width: 170px; text-align: center;">
             <b style="font-size:16px;">{atm['banco']}</b><br><small style="color:gray;">{atm['zona']}</small><hr>
-            Status: <b style="color:{cor};">{'DISPONÍVEL' if atm['dinheiro'] else 'VAZIO'}</b><br>
+            Status: <b style="color:{cor};">{'COM NOTAS' if atm['dinheiro'] else 'VAZIO'}</b><br>
             <button onclick="authUpdate({atm['id']}, '{'false' if atm['dinheiro'] else 'true'}')" 
-               style="margin-top:10px; padding:10px; width:100%; background:{cor}; color:white; border:none; border-radius:12px; font-weight:bold; cursor:pointer;">
-               ATUALIZAR
+               style="margin-top:10px; padding:10px; width:100%; background:{cor}; color:white; border:none; border-radius:15px; font-weight:bold; cursor:pointer;">
+               MUDAR STATUS
             </button>
         </div>
-        """
-        
-        marker = folium.Marker(
+        '''
+        folium.Marker(
             location=[atm["lat"], atm["lng"]],
             popup=folium.Popup(popup_html, max_width=250),
             icon=folium.DivIcon(html=icon_html),
             name=f"{atm['banco']} {atm['zona']}"
-        )
-        marker.add_to(cluster)
-        if atm["dinheiro"]:
-            marker.add_to(grupo_disponivel)
+        ).add_to(cluster)
 
-    folium.LayerControl(position='topright', collapsed=True).add_to(mapa)
+    # Pesquisa
     Search(layer=cluster, geom_type="Point", placeholder="Procurar banco...", collapsed=False, search_label="name").add_to(mapa)
 
-    mapa_html = mapa._repr_html_()
-    
-    return HTMLResponse(content=f"""
-    <!DOCTYPE html>
-    <html style="margin:0; padding:0; height:100%; width:100%;">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <style>
-            body, html {{ margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; position: fixed; }}
-            #map-wrapper {{ height: 100vh; width: 100vw; position: absolute; top:0; left:0; }}
-            .app-header {{
-                position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
-                width: 85%; max-width: 380px; background: rgba(255,255,255,0.95);
-                backdrop-filter: blur(10px); z-index: 9999; padding: 12px;
-                border-radius: 50px; text-align: center; font-family: sans-serif;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.15); font-weight: 900;
-                border-bottom: 3px solid #27ae60; pointer-events: none;
-            }}
-        </style>
-        <script>
-            function authUpdate(id, status) {{
-                var p = prompt("Código de Segurança:");
-                if(p == "{ADMIN_PIN}") {{ window.location.href = "/trocar?id="+id+"&status="+status; }}
-                else if(p != null) {{ alert("Código errado!"); }}
-            }}
-        </script>
-    </head>
-    <body>
-        <div class="app-header">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></div>
-        <div id="map-wrapper">{mapa_html}</div>
-    </body>
-    </html>
-    """)
+    # Retornar o mapa puro (o Folium trata do ecrã inteiro automaticamente assim)
+    return HTMLResponse(content=mapa._repr_html_())
 
 @app.get("/trocar")
 def trocar_status(id: int, status: str):
