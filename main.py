@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 
 app = FastAPI()
-FILE_NAME = "database_v25.json"
+FILE_NAME = "database_v26.json"
 ADMIN_PIN = "2424"
 
 def carregar_dados():
@@ -16,7 +16,6 @@ def carregar_dados():
             {"id": 0, "banco": "BAI", "muni": "Luanda", "zona": "Marginal", "lat": -8.8120, "lng": 13.2300, "dinheiro": True, "votos": 10, "hora": datetime.now().isoformat(), "fila": "Vazio"},
             {"id": 1, "banco": "BFA", "muni": "Luanda", "zona": "Maianga", "lat": -8.8315, "lng": 13.2325, "dinheiro": True, "votos": 25, "hora": datetime.now().isoformat(), "fila": "Médio"},
             {"id": 2, "banco": "BIC", "muni": "Talatona", "zona": "Belas Shopping", "lat": -8.9280, "lng": 13.1780, "dinheiro": True, "votos": 14, "hora": datetime.now().isoformat(), "fila": "Cheio"},
-            {"id": 3, "banco": "ATL", "muni": "Viana", "zona": "Viana Park", "lat": -8.9050, "lng": 13.3550, "dinheiro": False, "votos": 5, "hora": datetime.now().isoformat(), "fila": "Vazio"}
         ]
         salvar_dados(dados)
         return dados
@@ -27,59 +26,102 @@ def salvar_dados(dados):
     with open(FILE_NAME, "w") as f:
         json.dump(dados, f, indent=4)
 
-def calcular_tempo(iso_date):
-    try:
-        diff = datetime.now() - datetime.fromisoformat(iso_date)
-        minutos = int(diff.total_seconds() / 60)
-        if minutos < 1: return "agora mesmo"
-        if minutos < 60: return f"há {minutos} min"
-        return f"há {minutos // 60}h"
-    except: return "sem dados"
-
 @app.get("/", response_class=HTMLResponse)
 def mostrar_mapa(request: Request):
     atms = carregar_dados()
     mapa = folium.Map(location=[-8.8383, 13.2344], zoom_start=13, tiles="cartodbpositron", zoom_control=False)
 
-    header_content = f"""
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
-    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+    ui_content = f"""
     <style>
-        .leaflet-routing-container {{ display: none !important; }}
+        /* Estilo do Carregando */
+        #loader-container {{
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255,255,255,0.7); z-index: 20000;
+            display: none; align-items: center; justify-content: center;
+            flex-direction: column; font-family: sans-serif;
+        }}
+        .spinner {{
+            width: 50px; height: 50px; border: 5px solid #f3f3f3;
+            border-top: 5px solid #27ae60; border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }}
+        @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+
         #app-header {{
             position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
             width: 90%; max-width: 400px; background: white; z-index: 10000;
             padding: 12px; border-radius: 30px; display: flex; align-items: center; justify-content: space-between;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif;
         }}
-        .badge {{ font-size: 10px; padding: 3px 10px; border-radius: 12px; color: white; font-weight: bold; }}
-        .f-vazio {{ background: #27ae60; }} .f-medio {{ background: #f1c40f; color: black; }} .f-cheio {{ background: #e67e22; }}
     </style>
-    
+
+    <div id="loader-container">
+        <div class="spinner"></div>
+        <p style="margin-top: 15px; font-weight: bold; color: #27ae60;">A processar...</p>
+    </div>
+
     <div id="app-header">
-        <div onclick="location.reload()" style="cursor:pointer; font-size:20px;">🔄</div>
-        <div style="font-weight: 800; letter-spacing: -0.5px;">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></div>
-        <div onclick="partilharApp()" style="cursor:pointer; font-size:20px;">🔗</div>
+        <div onclick="showLoader(); location.reload()" style="cursor:pointer; font-size:20px;">🔄</div>
+        <div style="font-weight: 800;">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></div>
+        <div style="width:20px;"></div>
     </div>
 
     <script>
-        var uLat = -8.8383, uLng = 13.2344;
-        navigator.geolocation.getCurrentPosition(function(p){{ uLat=p.coords.latitude; uLng=p.coords.longitude; }});
+        function showLoader() {{ document.getElementById('loader-container').style.display = 'flex'; }}
 
-        function partilharApp() {{
-            if (navigator.share) {{
-                navigator.share({{
-                    title: 'Dinheiro Aki',
-                    text: 'Encontra ATMs com notas em Luanda agora!',
-                    url: window.location.href
-                }}).catch(console.error);
-            }} else {{
-                alert("Copia o link para partilhar: " + window.location.href);
+        // Capturar cliques em links e botões que mudam a página
+        function go(url) {{ showLoader(); window.location.href = url; }}
+
+        function setFila(id) {{
+            var res = prompt("Fila: 1-Vazio | 2-Médio | 3-Cheio");
+            if(res) {{ 
+                showLoader();
+                var f = res=="1"?"Vazio":res=="2"?"Médio":"Cheio";
+                window.location.href = "/up_f?id="+id+"&f="+f;
             }}
         }}
 
-        function ir(lat, lng) {{
-            var m = window[document.querySelector('.folium-map').id];
-            if (window.rC) {{ m.removeControl(window.rC); }}
-            window.rC = L.Routing.control({{
-                waypoints: [L.latLng(uLat
+        function updateAdmin(id, s) {{
+            if(prompt("PIN Admin:")=="{ADMIN_PIN}") {{
+                showLoader();
+                window.location.href="/up_s?id="+id+"&s="+s;
+            }}
+        }}
+    </script>
+    """
+    mapa.get_root().header.add_child(folium.Element(ui_content))
+    
+    # Scripts de Rota
+    mapa.get_root().header.add_child(folium.Element('<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" /><script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>'))
+
+    cluster = MarkerCluster(name="Bancos").add_to(mapa)
+    for atm in carregar_dados():
+        cor = "#27ae60" if atm["dinheiro"] else "#e74c3c"
+        icon_html = f'<div style="background:{cor}; border:2px solid white; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:10px;">{atm["banco"]}</div>'
+        
+        pop = f"""
+        <div style="text-align:center; font-family:sans-serif;">
+            <b>{atm["banco"]}</b><br><small>{atm["zona"]}</small><hr>
+            <button onclick="ir({atm['lat']}, {atm['lng']})" style="background:#27ae60; color:white; border:none; border-radius:20px; padding:10px; width:100%; font-weight:bold; cursor:pointer;">🚀 VER CAMINHO</button>
+            <div style="margin-top:10px;">
+                <button onclick="setFila({atm['id']})" style="font-size:10px; padding:5px; border:1px solid #ccc; background:white;">📊 Atualizar Fila</button>
+            </div>
+        </div>
+        """
+        folium.Marker([atm["lat"], atm["lng"]], popup=folium.Popup(pop, max_width=200), icon=folium.DivIcon(html=icon_html)).add_to(cluster)
+
+    return HTMLResponse(content=mapa._repr_html_())
+
+@app.get("/up_f")
+def up_f(id: int, f: str):
+    d = carregar_dados()
+    for a in d:
+        if a["id"] == id: a["fila"], a["hora"] = f, datetime.now().isoformat(); break
+    salvar_dados(d); return RedirectResponse(url="/")
+
+@app.get("/up_s")
+def up_s(id: int, s: str):
+    d = carregar_dados()
+    for a in d:
+        if a["id"] == id: a["dinheiro"], a["hora"] = (s.lower()=="true"), datetime.now().isoformat(); break
+    salvar_dados(d); return RedirectResponse(url="/")
