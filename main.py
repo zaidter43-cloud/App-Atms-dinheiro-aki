@@ -12,7 +12,7 @@ app = FastAPI()
 FILE_NAME = "db_luanda_v43.json"
 ADMIN_PIN_SERVER = "2424"
 
-# Cores oficiais dos bancos em Angola
+# Cores oficiais para identificação rápida
 BANCOS_CONFIG = {
     "BAI": {"cor": "#004a99"}, "BFA": {"cor": "#ff6600"}, "BIC": {"cor": "#e30613"}, 
     "SOL": {"cor": "#f9b233"}, "ATL": {"cor": "#00a1de"}, "BCI": {"cor": "#005da4"},
@@ -21,6 +21,7 @@ BANCOS_CONFIG = {
 
 def inicializar_base():
     if not os.path.exists(FILE_NAME):
+        # Distribuição proporcional pelos municípios de Luanda
         municipios = [
             {"n": "Luanda Centro", "lat": -8.814, "lng": 13.230, "q": 800},
             {"n": "Talatona", "lat": -8.928, "lng": 13.178, "q": 500},
@@ -52,19 +53,28 @@ def carregar():
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     atms = carregar()
+    # Mapa técnico com CartoDB (mais leve que OpenStreetMap para muitos pontos)
     mapa = folium.Map(location=[-8.8383, 13.2344], zoom_start=12, tiles="cartodbpositron", zoom_control=False)
+    
+    # Ativa GPS nativo
     LocateControl(fly_to=True, keepCurrentZoomLevel=False).add_to(mapa)
 
     ui = f"""
     <style>
-        #header {{ position: fixed; top: 15px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 450px; background: white; z-index: 10000; padding: 14px; border-radius: 40px; box-shadow: 0 5px 25px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; font-family: sans-serif; }}
+        #header {{ 
+            position: fixed; top: 15px; left: 50%; transform: translateX(-50%); 
+            width: 90%; max-width: 450px; background: white; z-index: 10000; 
+            padding: 14px; border-radius: 40px; box-shadow: 0 5px 25px rgba(0,0,0,0.2); 
+            display: flex; justify-content: space-between; align-items: center; font-family: sans-serif; 
+        }}
         .badge {{ font-size: 10px; padding: 2px 8px; border-radius: 10px; color: white; font-weight: bold; }}
         .f-vazio {{ background: #27ae60; }} .f-medio {{ background: #f1c40f; color: black; }} .f-cheio {{ background: #e67e22; }}
+        .leaflet-popup-content-wrapper {{ border-radius: 15px; }}
     </style>
     <div id="header">
         <b onclick="location.reload()" style="cursor:pointer; font-size:20px;">🔄</b>
         <span style="font-weight: 900; letter-spacing: 1px;">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></span>
-        <div style="background: #f0f0f0; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold;">{len(atms)}</div>
+        <div style="background: #f0f0f0; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold;">{len(atms)} ATMs</div>
     </div>
     <script>
         var atms_data = {json.dumps(atms)};
@@ -72,7 +82,13 @@ def home(request: Request):
 
         window.onload = function() {{
             var m = window[document.querySelector('.folium-map').id];
-            var cluster = L.markerClusterGroup({{ chunkedLoading: true, spiderfyOnMaxZoom: true }});
+            
+            // MarkerCluster otimizado para carregar 2k pontos sem travar
+            var cluster = L.markerClusterGroup({{ 
+                chunkedLoading: true, 
+                maxClusterRadius: 50,
+                disableClusteringAtZoom: 17
+            }});
             
             atms_data.forEach(function(a) {{
                 var corStatus = a.s ? '#27ae60' : '#e74c3c';
@@ -91,7 +107,7 @@ def home(request: Request):
                         Fila: <span class="badge ${{a.f == 'Vazio' ? 'f-vazio' : a.f == 'Médio' ? 'f-medio' : 'f-cheio'}}">${{a.f}}</span><hr>
                         <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${{a.lat}},${{a.lng}}')" style="background:#2c3e50; color:white; border:none; padding:12px; border-radius:20px; cursor:pointer; width:100%; font-weight:bold;">🚀 NAVEGAR AGORA</button>
                         <div style="margin-top:10px; display:flex; gap:5px;">
-                            <button onclick="updateStatus(${{a.id}}, ${{!a.s}})" style="flex:1; font-size:10px; padding:5px; border:none; background:#eee; border-radius:5px;">ADM</button>
+                            <button onclick="updateStatus(${{a.id}}, ${{!a.s}})" style="flex:1; font-size:10px; padding:5px; border:none; background:#f5f5f5; border-radius:5px; color:gray;">⚙️ Admin</button>
                         </div>
                     </div>
                 `);
@@ -112,7 +128,7 @@ def home(request: Request):
 @app.get("/up_s")
 def up_s(id: int, s: str, pin: str):
     if pin != ADMIN_PIN_SERVER:
-        return HTMLResponse("PIN INVÁLIDO", status_code=403)
+        return HTMLResponse("ACESSO NEGADO: PIN INCORRETO", status_code=403)
     d = carregar()
     for a in d:
         if a["id"] == id:
@@ -120,4 +136,4 @@ def up_s(id: int, s: str, pin: str):
             a["h"] = datetime.now().isoformat()
             break
     with open(FILE_NAME, "w") as f: json.dump(d, f)
-    return RedirectResponse(url="/?t=" + str(time.time()))
+    return RedirectResponse(url="/?update=" + str(time.time()))
