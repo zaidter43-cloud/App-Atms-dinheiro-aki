@@ -8,120 +8,91 @@ import random
 from datetime import datetime
 
 app = FastAPI()
-FILE_NAME = "db_luanda_full.json"
+FILE_NAME = "db_luanda_v42.json"
 ADMIN_PIN = "2424"
 
-# 1. GERADOR DA BASE DE DADOS (Executado apenas na primeira vez)
-def inicializar_base_dados():
-    if not os.path.exists(FILE_NAME):
-        print("A gerar 2100 ATMs para Luanda...")
-        municipios = [
-            {"nome": "Luanda (Centro)", "lat": -8.8147, "lng": 13.2305, "qtd": 600},
-            {"nome": "Talatona", "lat": -8.9288, "lng": 13.1782, "qtd": 400},
-            {"nome": "Viana", "lat": -8.9020, "lng": 13.3650, "qtd": 350},
-            {"nome": "Belas (Kilamba)", "lat": -8.9970, "lng": 13.2710, "qtd": 300},
-            {"nome": "Cazenga", "lat": -8.8450, "lng": 13.2950, "qtd": 200},
-            {"nome": "Cacuaco", "lat": -8.7770, "lng": 13.3650, "qtd": 150},
-            {"nome": "Samba", "lat": -8.8750, "lng": 13.1950, "qtd": 100}
-        ]
-        
-        bancos = ["BAI", "BFA", "BIC", "SOL", "ATL", "BCI", "KEVE", "ECONO", "STB"]
-        todos_atms = []
-        contador = 0
-        
-        for m in municipios:
-            for _ in range(m["qtd"]):
-                # Gera uma coordenada levemente aleatória ao redor do centro do município
-                lat_random = m["lat"] + random.uniform(-0.02, 0.02)
-                lng_random = m["lng"] + random.uniform(-0.02, 0.02)
-                
-                todos_atms.append({
-                    "id": contador,
-                    "banco": random.choice(bancos),
-                    "muni": m["nome"],
-                    "zona": f"Ponto {contador}",
-                    "lat": round(lat_random, 5),
-                    "lng": round(lng_random, 5),
-                    "dinheiro": random.choice([True, True, False]), # Simula estado real
-                    "hora": datetime.now().isoformat(),
-                    "fila": random.choice(["Vazio", "Médio", "Cheio"])
-                })
-                contador += 1
-        
-        with open(FILE_NAME, "w") as f:
-            json.dump(todos_atms, f, indent=2)
+# Cores oficiais dos bancos em Angola
+CORES_BANCOS = {
+    "BAI": "#004a99", "BFA": "#ff6600", "BIC": "#e30613", 
+    "SOL": "#f9b233", "ATL": "#00a1de", "BCI": "#005da4",
+    "KEVE": "#7b6348", "ECONO": "#003366", "STB": "#000000"
+}
 
-def carregar_dados():
-    with open(FILE_NAME, "r") as f:
-        return json.load(f)
+def inicializar_base():
+    if not os.path.exists(FILE_NAME):
+        municipios = [
+            {"n": "Luanda", "lat": -8.814, "lng": 13.230, "q": 800},
+            {"n": "Talatona", "lat": -8.928, "lng": 13.178, "q": 500},
+            {"n": "Viana", "lat": -8.902, "lng": 13.365, "q": 400},
+            {"n": "Kilamba", "lat": -8.997, "lng": 13.271, "q": 250},
+            {"n": "Cacuaco", "lat": -8.777, "lng": 13.365, "q": 150}
+        ]
+        bancos = list(CORES_BANCOS.keys())
+        dados = []
+        for m in municipios:
+            for i in range(m["q"]):
+                dados.append({
+                    "id": len(dados),
+                    "b": random.choice(bancos),
+                    "lat": round(m["lat"] + random.uniform(-0.04, 0.04), 5),
+                    "lng": round(m["lng"] + random.uniform(-0.04, 0.04), 5),
+                    "s": random.choice([True, True, False]), # Status: Tem dinheiro?
+                    "f": random.choice(["Vazio", "Médio", "Cheio"])
+                })
+        with open(FILE_NAME, "w") as f: json.dump(dados, f)
 
 @app.on_event("startup")
-def startup_event():
-    inicializar_base_dados()
+def startup(): inicializar_base()
 
 @app.get("/", response_class=HTMLResponse)
-def mostrar_mapa(request: Request):
-    atms = carregar_dados()
-    mapa = folium.Map(location=[-8.8383, 13.2344], zoom_start=12, tiles="cartodbpositron", zoom_control=False)
+def home(request: Request):
+    with open(FILE_NAME, "r") as f: atms = json.load(f)
     
-    # Botão de localização profissional
-    LocateControl(auto_start=False, fly_to=True).add_to(mapa)
+    mapa = folium.Map(location=[-8.8383, 13.2344], zoom_start=12, tiles="cartodbpositron", zoom_control=False)
+    LocateControl(fly_to=True).add_to(mapa)
 
+    # UI Técnica e Segura
     ui = f"""
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
-    <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
     <style>
-        .leaflet-routing-container {{ display: none !important; }}
-        #app-header {{
-            position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
-            width: 90%; max-width: 450px; background: white; z-index: 10000;
-            padding: 12px; border-radius: 35px; display: flex; align-items: center; justify-content: space-between;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15); font-family: sans-serif;
-        }}
-        .badge {{ font-size: 11px; padding: 2px 8px; border-radius: 10px; color: white; font-weight: bold; }}
-        .f-vazio {{ background: #27ae60; }} .f-medio {{ background: #f1c40f; color: black; }} .f-cheio {{ background: #e67e22; }}
+        #header {{ position: fixed; top: 10px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 400px; background: white; z-index: 10000; padding: 12px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; font-family: sans-serif; }}
+        .dot {{ width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 5px; }}
     </style>
-
-    <div id="app-header">
-        <div onclick="location.reload()">🔄</div>
-        <div style="font-weight: 800; font-size:16px;">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></div>
-        <div style="font-size: 12px; color: gray;">{len(atms)} ATMs</div>
+    <div id="header">
+        <b onclick="location.reload()">🔄</b>
+        <span style="font-weight: 900;">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></span>
+        <small style="background: #eee; padding: 4px 8px; border-radius: 10px;">{len(atms)} ATMs</small>
     </div>
-
     <script>
-        var uLat, uLng;
-        navigator.geolocation.getCurrentPosition(function(p){{ uLat=p.coords.latitude; uLng=p.coords.longitude; }});
-
-        function ir(lat, lng) {{
+        var atms_data = {json.dumps(atms)};
+        var cores_bancos = {json.dumps(CORES_BANCOS)};
+        
+        window.onload = function() {{
             var m = window[document.querySelector('.folium-map').id];
-            if (window.rC) {{ m.removeControl(window.rC); }}
-            window.rC = L.Routing.control({{
-                waypoints: [L.latLng(uLat, uLng), L.latLng(lat, lng)],
-                lineOptions: {{ styles: [{{color: '#2c3e50', weight: 6}}] }},
-                addWaypoints: false, fitSelectedRoutes: true, show: false
-            }}).addTo(m);
-        }}
+            var cluster = L.markerClusterGroup();
+            
+            atms_data.forEach(function(a) {{
+                var corStatus = a.s ? '#27ae60' : '#e74c3c';
+                var corBanco = cores_bancos[a.b];
+                
+                var icon = L.divIcon({{
+                    html: `<div style="background:${{corBanco}}; border: 3px solid ${{corStatus}}; width:30px; height:30px; border-radius:50%; color:white; font-size:8px; display:flex; align-items:center; justify-content:center; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">${{a.b}}</div>`,
+                    className: '', iconSize: [30, 30]
+                }});
+
+                var marker = L.marker([a.lat, a.lng], {{icon: icon}});
+                marker.bindPopup(`
+                    <div style="text-align:center; font-family:sans-serif;">
+                        <b style="font-size:16px; color:${{corBanco}}">${{a.b}}</b><br>
+                        Status: <b style="color:${{corStatus}}">${{a.s ? 'TEM NOTAS' : 'SEM NOTAS'}}</b><br>
+                        Fila: <b>${{a.f}}</b><hr>
+                        <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${{a.lat}},${{a.lng}}')" style="background:#2c3e50; color:white; border:none; padding:8px 15px; border-radius:15px; cursor:pointer; width:100%;">🚀 ABRIR GPS</button>
+                    </div>
+                `);
+                cluster.addLayer(marker);
+            }});
+            m.addLayer(cluster);
+        }};
     </script>
     """
     mapa.get_root().header.add_child(folium.Element(ui))
-
-    # CLUSTER É OBRIGATÓRIO PARA 2100 PONTOS
-    cluster = MarkerCluster(name="Rede Luanda").add_to(mapa)
-
-    for atm in atms:
-        cor = "#27ae60" if atm["dinheiro"] else "#e74c3c"
-        f_class = f"f-{atm['fila'].lower()}"
-        
-        # Ícone técnico minimalista para performance
-        icon = f'<div style="background:{cor}; width:12px; height:12px; border-radius:50%; border:2px solid white;"></div>'
-        
-        pop = f"""
-        <div style="text-align:center; font-family:sans-serif; width:180px;">
-            <b>{atm["banco"]}</b><br><small>{atm["muni"]}</small><hr>
-            Fila: <span class="badge {f_class}">{atm["fila"]}</span><br><br>
-            <button onclick="ir({atm['lat']}, {atm['lng']})" style="background:#2c3e50; color:white; border:none; border-radius:15px; padding:8px; width:100%; cursor:pointer; font-weight:bold;">MOSTRAR CAMINHO</button>
-        </div>
-        """
-        folium.Marker([atm["lat"], atm["lng"]], popup=folium.Popup(pop), icon=folium.DivIcon(html=icon)).add_to(cluster)
-
     return HTMLResponse(content=mapa._repr_html_())
