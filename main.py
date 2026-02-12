@@ -118,4 +118,49 @@ def home():
                         <small style="color:#7f8c8d; font-weight:bold;">${{a.muni}} - ${{a.zona}}</small>
                         <hr style="border:0.5px solid #eee; margin:10px 0;">
                         <div style="margin-bottom:8px;">Status: <b style="color:${{corStatus}}">${{a.s ? 'TEM NOTAS' : 'SEM NOTAS'}}</b></div>
-                        <div>Fila: <span class="badge ${{a.f=='Vazio'?'f-vazio':a.f=='Médio
+                        <div>Fila: <span class="badge ${{a.f=='Vazio'?'f-vazio':a.f=='Médio'?'f-medio':'f-cheio'}}">${{a.f}}</span></div>
+                        <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${{a.lat}},${{a.lng}}')" class="btn-nav">🚀 MOSTRAR CAMINHO</button>
+                        <div style="margin-top:10px; display:flex; justify-content:center; gap:15px;">
+                            <small onclick="adm(${{a.id}}, ${{!a.s}})" style="color:#bdc3c7; cursor:pointer;">⚙️ Gerir</small>
+                        </div>
+                    </div>
+                `);
+                
+                markers.push({{el: marker, searchTag: (a.b + a.muni + a.zona).toLowerCase()}});
+            }});
+        }};
+
+        function filtrar() {{
+            var val = document.getElementById('q').value.toLowerCase();
+            markers.forEach(function(m) {{
+                if (m.searchTag.includes(val)) m.el.getElement().style.opacity = "1";
+                else m.el.getElement().style.opacity = "0.1";
+            }});
+        }}
+
+        function partilhar() {{
+            if (navigator.share) {{
+                navigator.share({{ title: 'Dinheiro Aki', text: 'Vê onde há kumbu nos ATMs de Luanda!', url: window.location.href }});
+            }} else {{ alert("Link: " + window.location.href); }}
+        }}
+
+        function adm(id, s) {{
+            var p = prompt("PIN ADMINISTRATIVO:");
+            if(p) window.location.href = "/up_s?id="+id+"&s="+s+"&pin="+p;
+        }}
+    </script>
+    """
+    mapa.get_root().header.add_child(folium.Element(ui))
+    return HTMLResponse(content=mapa._repr_html_())
+
+@app.get("/up_s")
+def up_s(id: int, s: str, pin: str):
+    if pin != ADMIN_PIN_SERVER: return HTMLResponse("ACESSO NEGADO", status_code=403)
+    with open(FILE_NAME, "r") as f: d = json.load(f)
+    for a in d:
+        if a["id"] == id:
+            a["s"] = (s.lower() == "true")
+            a["h"] = datetime.now().isoformat()
+            break
+    with open(FILE_NAME, "w") as f: json.dump(d, f)
+    return RedirectResponse(url="/")
