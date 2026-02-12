@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 
 app = FastAPI()
-FILE_NAME = "database_v28.json"
+FILE_NAME = "database_v30.json"
 ADMIN_PIN = "2424"
 
 def carregar_dados():
@@ -19,12 +19,12 @@ def carregar_dados():
         ]
         salvar_dados(dados)
         return dados
-    with open(FILE_NAME, "r") as f:
-        return json.load(f)
+    try:
+        with open(FILE_NAME, "r") as f: return json.load(f)
+    except: return []
 
 def salvar_dados(dados):
-    with open(FILE_NAME, "w") as f:
-        json.dump(dados, f, indent=4)
+    with open(FILE_NAME, "w") as f: json.dump(dados, f, indent=4)
 
 def calcular_tempo(iso_date):
     try:
@@ -45,63 +45,70 @@ def mostrar_mapa(request: Request):
     <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
     <style>
         .leaflet-routing-container {{ display: none !important; }}
-        #loader-container {{
+        #loader {{
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255,255,255,0.8); z-index: 20000;
-            display: none; align-items: center; justify-content: center;
+            background: white; z-index: 30000;
+            display: flex; align-items: center; justify-content: center;
             flex-direction: column; font-family: sans-serif;
         }}
-        .spinner {{ width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #27ae60; border-radius: 50%; animation: spin 1s linear infinite; }}
-        @keyframes spin {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
+        .spin {{ width: 50px; height: 50px; border: 5px solid #f3f3f3; border-top: 5px solid #27ae60; border-radius: 50%; animation: s 1s linear infinite; }}
+        @keyframes s {{ 0% {{ transform: rotate(0deg); }} 100% {{ transform: rotate(360deg); }} }}
         #app-header {{
             position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
             width: 90%; max-width: 400px; background: white; z-index: 10000;
             padding: 12px; border-radius: 30px; display: flex; align-items: center; justify-content: space-between;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-family: sans-serif;
         }}
-        .badge {{ font-size: 10px; padding: 2px 8px; border-radius: 10px; color: white; font-weight: bold; margin-top: 5px; display: inline-block; }}
+        .info-row {{ margin-bottom: 5px; font-size: 12px; }}
+        .badge {{ font-size: 11px; padding: 2px 10px; border-radius: 10px; color: white; font-weight: bold; }}
         .f-vazio {{ background: #27ae60; }} .f-medio {{ background: #f1c40f; color: black; }} .f-cheio {{ background: #e67e22; }}
     </style>
 
-    <div id="loader-container"><div class="spinner"></div><p style="color:#27ae60; margin-top:10px;">A processar...</p></div>
+    <div id="loader"><div class="spin"></div><p style="color:#27ae60; margin-top:15px; font-weight:bold;">A preparar mapa...</p></div>
 
     <div id="app-header">
-        <div onclick="location.reload()" style="cursor:pointer; font-size:18px;">🔄</div>
-        <div style="font-weight: 800; font-size:15px;">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></div>
-        <div onclick="partilhar()" style="cursor:pointer; font-size:18px;">🔗</div>
+        <div onclick="showL(); location.reload()" style="cursor:pointer; font-size:20px;">🔄</div>
+        <div style="font-weight: 800; font-size:16px;">🏧 DINHEIRO <span style="color:#27ae60;">AKI</span></div>
+        <div onclick="partilhar()" style="cursor:pointer; font-size:20px;">🔗</div>
     </div>
 
     <script>
+        // Esconder loader quando o mapa carregar
+        window.onload = function() {{ setTimeout(() => {{ document.getElementById('loader').style.display = 'none'; }}, 1000); }};
+        
         var uLat = -8.8383, uLng = 13.2344;
         navigator.geolocation.getCurrentPosition(function(p){{ uLat=p.coords.latitude; uLng=p.coords.longitude; }});
 
-        function showL() {{ document.getElementById('loader-container').style.display = 'flex'; }}
+        function showL() {{ document.getElementById('loader').style.display = 'flex'; }}
 
         function partilhar() {{
-            if (navigator.share) {{
-                navigator.share({{ title: 'Dinheiro Aki', text: 'Vê ATMs com notas em Luanda!', url: window.location.href }});
-            }} else {{ alert("Copia o link: " + window.location.href); }}
+            alert("Partilha Direta: Disponível em breve! Por enquanto, copie o link do navegador.");
         }}
 
         function ir(lat, lng) {{
-            var mId = document.querySelector('.folium-map').id;
-            var mInstance = window[mId];
-            if (window.rC) {{ mInstance.removeControl(window.rC); }}
-            window.rC = L.Routing.control({{
-                waypoints: [L.latLng(uLat, uLng), L.latLng(lat, lng)],
-                lineOptions: {{ styles: [{{color: '#27ae60', weight: 6}}] }},
-                createMarker: function() {{ return null; }}
-            }}).addTo(mInstance);
-            mInstance.closePopup();
+            showL();
+            try {{
+                var m = window[document.querySelector('.folium-map').id];
+                if (window.rC) {{ m.removeControl(window.rC); }}
+                window.rC = L.Routing.control({{
+                    waypoints: [L.latLng(uLat, uLng), L.latLng(lat, lng)],
+                    lineOptions: {{ styles: [{{color: '#27ae60', weight: 7, opacity: 0.8}}] }},
+                    createMarker: function() {{ return null; }}
+                }}).addTo(m);
+                m.closePopup();
+            }} catch(e) {{ console.log(e); }}
+            setTimeout(() => {{ document.getElementById('loader').style.display = 'none'; }}, 800);
         }}
 
         function setF(id) {{
-            var r = prompt("Fila: 1-Vazio | 2-Médio | 3-Cheio");
+            var r = prompt("ESTADO DA FILA:\\n1 - Vazio (Livre)\\n2 - Médio (15 min)\\n3 - Cheio (Muita gente)");
             if(r) {{ showL(); var f = r=="1"?"Vazio":r=="2"?"Médio":"Cheio"; window.location.href="/up_f?id="+id+"&f="+f; }}
         }}
 
         function upA(id, s) {{
-            if(prompt("PIN Admin (2424):")=="{ADMIN_PIN}") {{ showL(); window.location.href="/up_s?id="+id+"&s="+s; }}
+            var p = prompt("PIN ADMINISTRATIVO:");
+            if(p == "{ADMIN_PIN}") {{ showL(); window.location.href="/up_s?id="+id+"&s="+s; }}
+            else if(p !== null) {{ alert("PIN Incorreto!"); }}
         }}
     </script>
     """
@@ -113,25 +120,30 @@ def mostrar_mapa(request: Request):
         tempo = calcular_tempo(atm["hora"])
         f_class = f"f-{atm['fila'].lower()}"
         
-        icon_html = f'<div style="background:{cor}; border:2px solid white; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:9px;">{atm["banco"]}</div>'
+        icon_html = f'<div style="background:{cor}; border:2px solid white; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:10px;">{atm["banco"]}</div>'
         
         pop = f"""
-        <div style="text-align:center; font-family:sans-serif; min-width:180px;">
-            <b style="font-size:16px;">{atm["banco"]}</b><br><small>{atm["zona"]}</small><hr>
-            <div style="margin-bottom:8px;">
-                <span style="color:{cor}; font-weight:bold; font-size:12px;">{tempo}</span><br>
-                <span class="badge {f_class}">Fila: {atm['fila']}</span>
+        <div style="text-align:center; font-family:sans-serif; min-width:210px; padding:5px;">
+            <b style="font-size:18px; color:#2c3e50;">{atm["banco"]}</b><br>
+            <small style="color:#7f8c8d;">{atm["zona"]}</small><hr style="border:0.5px solid #eee;">
+            
+            <div class="info-row">
+                <span style="color:#7f8c8d;">Notas:</span> <b style="color:{cor};">{tempo}</b>
             </div>
-            <button onclick="ir({atm['lat']}, {atm['lng']})" style="background:#27ae60; color:white; border:none; border-radius:20px; padding:10px; width:100%; font-weight:bold; cursor:pointer;">🚀 MOSTRAR CAMINHO</button>
-            <div style="margin-top:10px; display:flex; gap:5px; justify-content:center;">
-                <button onclick="setF({atm['id']})" style="font-size:10px; padding:5px; border:1px solid #ccc; background:white; border-radius:5px;">📊 Atualizar Fila</button>
-                <button onclick="upA({atm['id']}, '{not atm['dinheiro']}')" style="font-size:10px; border:1px solid #ddd; background:#f9f9f9; border-radius:5px; color:gray;">⚙️ Status Admin</button>
+            <div class="info-row">
+                <span style="color:#7f8c8d;">Fila:</span> <span class="badge {f_class}">{atm['fila']}</span>
+            </div>
+            
+            <button onclick="ir({atm['lat']}, {atm['lng']})" style="background:#2c3e50; color:white; border:none; border-radius:20px; padding:12px; width:100%; font-weight:bold; cursor:pointer; margin:10px 0;">🚀 MOSTRAR CAMINHO</button>
+            
+            <div style="display:flex; gap:5px; justify-content:center; margin-top:5px;">
+                <button onclick="setF({atm['id']})" style="font-size:10px; padding:8px; border:1px solid #ccc; background:white; border-radius:8px; flex:1;">📊 Atualizar Fila</button>
+                <button onclick="upA({atm['id']}, '{not atm['dinheiro']}')" style="font-size:10px; border:1px solid #ddd; background:#f9f9f9; border-radius:8px; color:gray; flex:1;">⚙️ Dinheiro (Adm)</button>
             </div>
         </div>
         """
-        folium.Marker([atm["lat"], atm["lng"]], popup=folium.Popup(pop, max_width=250), icon=folium.DivIcon(html=icon_html), name=f"{atm['banco']} {atm['zona']}").add_to(cluster)
+        folium.Marker([atm["lat"], atm["lng"]], popup=folium.Popup(pop, max_width=260), icon=folium.DivIcon(html=icon_html)).add_to(cluster)
 
-    Search(layer=cluster, geom_type="Point", placeholder="Procurar...", collapsed=False, search_label="name").add_to(mapa)
     return HTMLResponse(content=mapa._repr_html_())
 
 @app.get("/up_f")
